@@ -2,7 +2,7 @@
 
 Private operations assistant. NOVA reads, analyses and recommends. It changes nothing without the owner's specific, time-limited, single-use approval.
 
-Architecture and roadmap: see the approved proposal doc. This repo is **Phase 1: Foundation**.
+Architecture and roadmap: see the approved proposal doc. Phases built so far: **1 (Foundation)** and **2 (Integrations)**.
 
 ## What Phase 1 includes
 
@@ -20,7 +20,24 @@ Architecture and roadmap: see the approved proposal doc. This repo is **Phase 1:
 - **Ask NOVA chat**: Anthropic API, server-side only. Context is built from the registry and redacted before sending. Health is never claimed without monitoring evidence.
 - Brand: Lexend/Figtree, myAIDA purple palette, flat colour. All times are shown in EAT.
 
-Not yet built: GitHub, WhatsApp and monitoring (Phases 2–3), real write executors (Phase 4), reports (Phase 5) and a TOTP backup login.
+## What Phase 2 adds
+
+Setup steps are in **SETUP.md**.
+
+- **GitHub, read-only.** A GitHub App with only read permissions.
+  - Signed, de-duplicated webhooks for PRs, workflow runs, issues and releases.
+  - A full resync every 15 minutes from the worker (`npm run worker`). Octokit handles rate limits and retries.
+  - Repos link to applications. Each app page shows its open PRs, recent Actions, open issues and latest release.
+  - The command center shows live counts, and chat answers from this data.
+- **WhatsApp (Meta Cloud API).**
+  - The webhook checks Meta's `X-Hub-Signature-256` and de-duplicates messages.
+  - Your number is linked once, with a one-time code from the dashboard. Every other sender is ignored and audited.
+  - Commands: `status`, `approvals`, or a free-text question.
+  - Low-risk proposals can be approved with reply buttons. Each button carries the operation's hash, so an old button can't approve a changed proposal. Medium and High risk stay passkey-only.
+  - Inside 24 hours of your last message, NOVA sends free-form text. Outside it, alerts use the approved `nova_alert` template.
+  - Alerts: failed builds on default branches, new PRs, new releases, approval requests.
+
+Not yet built: monitoring and PR analysis (Phase 3), real write executors and grouped notifications (Phase 4), reports (Phase 5), and a TOTP backup login.
 
 ## Run locally
 
@@ -29,6 +46,7 @@ cp .env.example .env            # fill in; generate NOVA_SETUP_TOKEN with: opens
 npm install
 npm run db:migrate              # needs a reachable PostgreSQL 16 in DATABASE_URL
 npm run dev                     # http://localhost:3000 → enter the setup token → create your passkey
+npm run worker                  # background jobs (GitHub sync)
 ```
 
 Passkeys require `NOVA_ORIGIN` to match the browser URL exactly. `NOVA_RP_ID` is its bare hostname, for example `nova.example.com`. Production must use HTTPS.

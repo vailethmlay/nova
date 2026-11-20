@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { applications, chatMessages, proposals } from "@/db/schema";
 import { env } from "@/lib/env";
 import { redact } from "@/lib/redact";
+import { appActivity } from "@/lib/github/queries";
 
 const SYSTEM = `You are NOVA, a private operations assistant for one owner who runs several software applications.
 
@@ -12,7 +13,7 @@ How you work:
 - You can read, analyse and recommend. You cannot act. You never merge, push, deploy or change anything.
   If an action is needed, say exactly what you would propose, and that it will need the owner's approval in the Approval Center.
 - Use only the context given below and the conversation. If something isn't in it, say you don't have that data yet
-  (GitHub and monitoring integrations arrive in Phase 2-3). Never invent PRs, builds, metrics or health status.
+  (monitoring arrives in Phase 3; GitHub data is only what's listed below). Never invent PRs, builds, metrics or health status.
 - Never describe an application as healthy or up without monitoring evidence in the context.
 - Be concise. Lead with the answer. Recommend one most important next step rather than many.
 - Times are in East Africa Time (EAT).`;
@@ -22,6 +23,21 @@ async function buildContext(applicationId: string | null) {
     ? await db().select().from(applications).where(eq(applications.id, applicationId))
     : await db().select().from(applications).orderBy(asc(applications.name));
   const pending = await db().select().from(proposals).where(eq(proposals.status, "pending"));
+  const activity = new Map(await Promise.all(apps.map(async (a) => [a.id, await appActivity(db(), a.id)] as const)));
+  const ghText = (id: string) => {
+    const g = activity.get(id);
+    if (!g || !g.repos.length) return "GitHub: no repository linked.";
+    const prs = g.prs.map((p) => `#${p.number} ${p.title} (by ${p.author}${p.draft ? ", draft" : ""}, updated ${p.updatedAtGh.toISOString().slice(0, 10)})`);
+    const runs = g.runs.map((r) => `${r.name} on ${r.headBranch ?? "?"}: ${r.conclusion ?? r.status} (${r.updatedAtGh.toISOString().slice(0, 16)}Z)`);
+    const iss = g.openIssues.map((i) => `#${i.number} ${i.title}${i.labels.length ? ` [${i.labels.join(", ")}]` : ""}`);
+    return [
+      `GitHub repos: ${g.repos.map((r) => r.fullName).join(", ")}`,
+      `Open PRs (${prs.length}): ${prs.join("; ") || "none"}`,
+      `Recent workflow runs: ${runs.join("; ") || "none"}`,
+      `Open issues (${iss.length}): ${iss.join("; ") || "none"}`,
+      `Latest release: ${g.latestReleases[0]?.tagName ?? "none"}`,
+    ].join("\n");
+  };
   const appText = apps
     .map((a) =>
       [
@@ -37,6 +53,7 @@ async function buildContext(applicationId: string | null) {
         a.pendingTasks && `Pending tasks: ${a.pendingTasks}`,
         a.roadmap && `Roadmap: ${a.roadmap}`,
         a.contextNotes && `Owner's notes: ${a.contextNotes}`,
+        ghText(a.id),
         `Monitoring: not connected yet (no health evidence).`,
       ]
         .filter(Boolean)

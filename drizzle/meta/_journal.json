@@ -15,6 +15,13 @@
       "when": 1795078711033,
       "tag": "0001_audit_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795196768571,
+      "tag": "0002_phase2_github_whatsapp",
+      "breakpoints": true
     }
   ]
 }
