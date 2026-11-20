@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   bigserial,
+  boolean,
   index,
   integer,
   jsonb,
@@ -136,4 +138,101 @@ export const chatMessages = pgTable("chat_messages", {
   role: text("role").notNull(), // user | assistant
   content: text("content").notNull(),
   createdAt: createdAt(),
+});
+
+/* ---------------- Phase 2: GitHub (read-only) ---------------- */
+
+export const githubRepos = pgTable("github_repos", {
+  id: bigint("id", { mode: "number" }).primaryKey(), // GitHub repository id
+  fullName: text("full_name").notNull(),
+  installationId: bigint("installation_id", { mode: "number" }).notNull(),
+  applicationId: uuid("application_id").references(() => applications.id, { onDelete: "set null" }),
+  defaultBranch: text("default_branch").notNull().default("main"),
+  isPrivate: boolean("is_private").notNull().default(true),
+  htmlUrl: text("html_url").notNull(),
+  removed: boolean("removed").notNull().default(false),
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  createdAt: createdAt(),
+});
+
+export const pullRequests = pgTable(
+  "pull_requests",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey(),
+    repoId: bigint("repo_id", { mode: "number" }).notNull().references(() => githubRepos.id),
+    number: integer("number").notNull(),
+    title: text("title").notNull(),
+    author: text("author").notNull(),
+    state: text("state").notNull(), // open | closed | merged
+    draft: boolean("draft").notNull().default(false),
+    headRef: text("head_ref").notNull(),
+    headSha: text("head_sha").notNull(),
+    baseRef: text("base_ref").notNull(),
+    htmlUrl: text("html_url").notNull(),
+    createdAtGh: timestamp("created_at_gh", { withTimezone: true }).notNull(),
+    updatedAtGh: timestamp("updated_at_gh", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("pull_requests_repo_state_idx").on(t.repoId, t.state)],
+);
+
+export const workflowRuns = pgTable(
+  "workflow_runs",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey(),
+    repoId: bigint("repo_id", { mode: "number" }).notNull().references(() => githubRepos.id),
+    name: text("name").notNull(),
+    event: text("event").notNull(),
+    status: text("status").notNull(),
+    conclusion: text("conclusion"),
+    headBranch: text("head_branch"),
+    headSha: text("head_sha").notNull(),
+    htmlUrl: text("html_url").notNull(),
+    createdAtGh: timestamp("created_at_gh", { withTimezone: true }).notNull(),
+    updatedAtGh: timestamp("updated_at_gh", { withTimezone: true }).notNull(),
+    alertedAt: timestamp("alerted_at", { withTimezone: true }),
+  },
+  (t) => [index("workflow_runs_repo_idx").on(t.repoId, t.updatedAtGh)],
+);
+
+export const issues = pgTable(
+  "issues",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey(),
+    repoId: bigint("repo_id", { mode: "number" }).notNull().references(() => githubRepos.id),
+    number: integer("number").notNull(),
+    title: text("title").notNull(),
+    state: text("state").notNull(),
+    labels: text("labels").array().notNull().default([]),
+    htmlUrl: text("html_url").notNull(),
+    updatedAtGh: timestamp("updated_at_gh", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("issues_repo_state_idx").on(t.repoId, t.state)],
+);
+
+export const releases = pgTable("releases", {
+  id: bigint("id", { mode: "number" }).primaryKey(),
+  repoId: bigint("repo_id", { mode: "number" }).notNull().references(() => githubRepos.id),
+  tagName: text("tag_name").notNull(),
+  name: text("name"),
+  prerelease: boolean("prerelease").notNull().default(false),
+  htmlUrl: text("html_url").notNull(),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+});
+
+/** Webhook deliveries already processed (GitHub delivery id / WhatsApp message id): drops retries. */
+export const webhookDeliveries = pgTable("webhook_deliveries", {
+  id: text("id").primaryKey(), // "github:<delivery>" | "whatsapp:<wamid>"
+  receivedAt: createdAt(),
+});
+
+/* ---------------- Phase 2: WhatsApp ---------------- */
+
+/** Single row (id = 1). The owner's WhatsApp id is only set by the one-time linking code. */
+export const whatsappLink = pgTable("whatsapp_link", {
+  id: smallint("id").primaryKey().default(1),
+  ownerWaId: text("owner_wa_id"),
+  linkCodeHash: text("link_code_hash"),
+  linkCodeExpiresAt: timestamp("link_code_expires_at", { withTimezone: true }),
+  linkedAt: timestamp("linked_at", { withTimezone: true }),
+  lastInboundAt: timestamp("last_inbound_at", { withTimezone: true }), // opens Meta's 24-hour window
 });

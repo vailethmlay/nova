@@ -12,9 +12,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="mark">NOVA</div>
         <Link href="/">Command center</Link>
         <Link href="/apps">Applications</Link>
+        <Link href="/repos">Repositories</Link>
         <Link href="/approvals">Approvals</Link>
         <Link href="/chat">Ask NOVA</Link>
         <Link href="/audit">Audit log</Link>
+        <Link href="/settings">Integrations</Link>
         <div className="spacer" />
         <LogoutButton />
       </nav>
